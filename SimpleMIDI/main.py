@@ -2,15 +2,15 @@ import io
 import sys
 
 from Utils import *
+from Midi import *
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox
 
 from PyQt6 import uic
 
-
-class MyApplication(QMainWindow):
+class TheApp(QMainWindow):
     def __init__(self):
         super().__init__()
         with open("App.ui", "r", encoding="UTF-8") as file:
@@ -18,17 +18,36 @@ class MyApplication(QMainWindow):
             uic.loadUi(f, self)
 
         self.centralWidget().setMouseTracking(True)
-
+        #         ------Declarations------
+        self.ViewPosition = Vector2()
+        self.PrimaryDragInfo = MouseMoveInfo()
+        self.SecondaryDragInfo = MouseMoveInfo()
         self.notes = []
-        self.noteDisplaySize = Vector2(38, 6)
+        self.noteDisplaySize = Vector2(90, 30)
+        self.PitchRange = (-70,70)
+        self.PitchPerY = 5
+        self.LengthPerX = 1
+        
+        self.can_place_note = True
+        self.PlaceTimer = QTimer()
+        self.PlaceTimer.setSingleShot(True)
+        self.PlaceTimer.timeout.connect(lambda: setattr(self, 'can_place_note', True))
+        
+        #         ------Preferences------
+        self.COLOR_grid_color = QColor("#797c85")
+        self.COLOR_grid_fill_color = QColor("#676274")
+        self.COLOR_note_fill = QColor(255, 100, 100, 200)
+        self.COLOR_note_border = QColor(0, 0, 0)
+        self.COLOR_Note_Mark = QColor(0,0,0)
 
-        #Pref
-        self.grid_color = QColor("#4d68b2")
-        self.grid_fill_color = QColor("#644db2")
-        self.note_fill = QColor(255, 100, 100, 200)
-        self.note_border = QColor(0, 0, 0)
+        self.notePlacementSnap = 8
 
-        self.centralWidget().setStyleSheet(f"background-color: {self.grid_fill_color.name()};")
+        self.centralWidget().setStyleSheet(f"background-color: {self.COLOR_grid_fill_color.name()};")
+
+        #         ------Settings Event Links------
+
+        self.PitchRangeSpinbox.valueChanged.connect(lambda x: self.ChangePitchParams(PitchRange=(-x, x)))
+        self.PitchPerYSpinbox.valueChanged.connect(lambda x: self.ChangePitchParams(PitchPerY=x))
 
         self.GridWidthSetSpinbox.setValue(self.noteDisplaySize[0])
         self.GridHeightSetSpinbox.setValue(self.noteDisplaySize[1])
@@ -36,44 +55,85 @@ class MyApplication(QMainWindow):
         self.GridWidthSetSpinbox.valueChanged.connect(self.UpdateSize)
         self.GridHeightSetSpinbox.valueChanged.connect(self.UpdateSize)
 
-        self.ViewPosition = Vector2()
-
-        self.DragInfo = MouseMoveInfo()
-
         self.centralWidget().paintEvent = self.CentralPaintEvent
         self.centralWidget().mouseMoveEvent = self.Central_MouseMoveEvent
         self.centralWidget().mousePressEvent = self.Central_MousePressEvent
         self.centralWidget().mouseReleaseEvent = self.Central_MouseReleaseEvent
         self.centralWidget().wheelEvent = self.wheelScrollEvent
 
-        self.PitchBound = (-50,50)
-        self.PitchPerNote = 5
+        #         ------Logger------
+        self.Logger = Logger(self.Log)
+
+        # //StaticMessages//
+        self._warn_InvalidPitchSettingsRatio = LogMessage("WARN: InvalidPitchSettingsRatio --- PitchRange / PitchPerY should output an integer, outputs float instead( This makes amount of notes on the piano roll miss out )", "warn")
 
         self.centralWidget().update()
 
     def GetGridCoordinates(self, mouse_pos):
+        
+        grid_x = (mouse_pos.x + self.ViewPosition.x) / self.noteDisplaySize.x
+        grid_y = (mouse_pos.y + self.ViewPosition.y) // self.noteDisplaySize.y
 
-        #midi_pitch = self.PitchBound[0] + (grid_y * self.PitchPerNote)
-        return# Vector2(grid_x)#, grid_y), midi_pitch
+        return Vector2(grid_x, grid_y)
 
     def Central_MousePressEvent(self, e: QMouseEvent):
         if e.button() == Qt.MouseButton.LeftButton:
-            self.DragInfo.drag = True
+            self.PrimaryDragInfo.drag = True
         elif e.button() == Qt.MouseButton.RightButton:
-            print(self.GetGridCoordinates(Vector2(e.pos().x(), e.pos().y())))
+            self.SecondaryDragInfo.drag = True
+
+            if self.can_place_note:
+                self._CurrentNoteEditing = Note(self.GetGridCoordinates(Vector2(e.pos().x(), e.pos().y())))
+
+                self._CurrentNoteEditing.position.x = int(self._CurrentNoteEditing.position.x*self.notePlacementSnap)/self.notePlacementSnap
+
+                self.notes.append(self._CurrentNoteEditing)
+            self.update()
 
     def Central_MouseReleaseEvent(self, e: QMouseEvent):
         if e.button() == Qt.MouseButton.LeftButton:
-            self.DragInfo.drag = False
+            self.PrimaryDragInfo.drag = False
+
+        elif e.button() == Qt.MouseButton.RightButton:
+            self.SecondaryDragInfo.drag = False
+
+            self.can_place_note = False
+            self.PlaceTimer.start(250)
+
+            if hasattr(self, "_CurrentNoteEditing"):
+                delattr(self, "_CurrentNoteEditing")
+                self.update()
+
+    def ChangePitchParams(self, PitchRange = None, PitchPerY = None):
+        if PitchRange != None:
+            self.PitchRange = PitchRange
+        if PitchPerY != None:
+            self.PitchPerY = PitchPerY
+
+        if self.PitchRange[1] // self.PitchPerY != self.PitchRange[1] / self.PitchPerY:
+            self.Logger.Log(self._warn_InvalidPitchSettingsRatio)
+        else:
+            self.Logger.RemoveSingleton(self._warn_InvalidPitchSettingsRatio)
+
+        self.centralWidget().update()
 
     def Central_MouseMoveEvent(self, e: QMouseEvent):
         cw_pos = self.centralWidget().mapFrom(self, e.pos())
         position = Vector2(cw_pos.x(), cw_pos.y())
 
-        self.DragInfo.Write(position)
+        self.PrimaryDragInfo.Write(position)
+        self.SecondaryDragInfo.Write(position)
 
-        if self.DragInfo.drag:
-            self.ViewPosition -= self.DragInfo.delta
+        if self.PrimaryDragInfo.drag:
+            self.ViewPosition -= self.PrimaryDragInfo.delta
+
+        if self.SecondaryDragInfo.drag and hasattr(self, "_CurrentNoteEditing"):
+            self._CurrentNoteEditing.length = (max(
+                    self.GetGridCoordinates(Vector2(
+                        self.SecondaryDragInfo.position.x - self.SecondaryDragInfo.start.x,0
+                        )).x, .1
+                )) * self.LengthPerX
+            self._CurrentNoteEditing.length = int(self._CurrentNoteEditing.length*self.notePlacementSnap)/self.notePlacementSnap
 
         self.centralWidget().update()
 
@@ -94,35 +154,47 @@ class MyApplication(QMainWindow):
         cw = self.centralWidget()
 
         painter = QPainter(cw)
-        painter.begin(self)
-        grid_pen = QPen(self.grid_color,2)
+
+        font = painter.font()
+        font.setPixelSize(int(self.noteDisplaySize.y/1.4))
+
+        grid_pen = QPen(self.COLOR_grid_color,2)
         startPoint = Vector2()
         endPoint = Vector2(startPoint.x + cw.width(), startPoint.y + cw.height())
 
-        #Render Grid
-
-        for x in range(startPoint.x, endPoint.x, self.noteDisplaySize.x):
-            painter.setPen(grid_pen)
-            offset = self.ViewPosition.x % self.noteDisplaySize.x
-            painter.drawLine(x - offset, startPoint.y, x - offset, endPoint.y)
-
-        for pitch in range(self.PitchBound[0], self.PitchBound[1] + 1, self.PitchPerNote):
-
-            pitch_index = pitch - self.PitchBound[0]
-            screen_y = pitch_index * self.noteDisplaySize.y - self.ViewPosition.y
-
-            painter.setPen(grid_pen)
-            painter.drawLine(startPoint.x, screen_y, endPoint.x, screen_y)
+        # Render Grid
 
         painter.setPen(QPen(QColor(200,70,70),8))
         painter.drawLine(-self.ViewPosition.x, startPoint.y, -self.ViewPosition.x, endPoint.y)
 
-        painter.end()
+        for idx, x in enumerate(range(startPoint.x, endPoint.x, self.noteDisplaySize.x)):
+            painter.setPen(grid_pen)
+            offset = self.ViewPosition.x % self.noteDisplaySize.x
+            painter.drawLine(x - offset, startPoint.y, x - offset, endPoint.y)
 
+            painter.setPen(QPen(self.COLOR_Note_Mark))
 
+            time = idx + (self.ViewPosition.x // self.noteDisplaySize.x)
+
+            painter.drawText(x - offset, int(self.noteDisplaySize.y/1.4), str(time*self.LengthPerX))
+
+        for idx, pitch in enumerate(range(self.PitchRange[0], self.PitchRange[1] + 1, self.PitchPerY)):
+            screen_y = (idx * self.noteDisplaySize.y) - self.ViewPosition.y
+
+            painter.setPen(grid_pen)
+            painter.drawLine(startPoint.x, screen_y, endPoint.x, screen_y)
+
+            painter.setPen(QPen(self.COLOR_Note_Mark))
+            painter.drawText(0, int(screen_y), str(pitch))
+
+        # Render Notes
+
+        for note in self.notes:
+            note: Note
+            painter.drawRect(int(note.position.x * self.noteDisplaySize.x - self.ViewPosition.x), (note.position.y) * self.noteDisplaySize.y - self.ViewPosition.y, int(self.noteDisplaySize.x * note.length), self.noteDisplaySize.y)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    ex = MyApplication()
+    ex = TheApp()
     ex.show()
     sys.exit(app.exec())

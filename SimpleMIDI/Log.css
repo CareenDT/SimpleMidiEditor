@@ -1,0 +1,11 @@
+.msg {
+    color:white
+}
+
+.warn {
+    color: yellow;
+}
+
+.error {
+    color: red;
+}

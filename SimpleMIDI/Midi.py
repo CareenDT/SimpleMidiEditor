@@ -1,28 +1,20 @@
-import mido
-import time
+import threading
+import rtmidi
 
-mido.set_backend('mido.backends.portmidi')
-
-def simplest_realtime_example():
-    # 1. List available devices
-    print("=== MIDI Devices ===")
-    print("Inputs:", mido.get_input_names())
-    print("Outputs:", mido.get_output_names())
-    print("====================")
-
-    # 2. Try to open ports (you'll need to change these names!)
-    try:
-        # Replace with your actual device names from above
-        with mido.open_input('Microsoft GS Wavetable Synth 0') as inport:
-            print("🎹 Listening for MIDI input... Press keys on your keyboard!")
-            print("Press Ctrl+C to stop")
-
-            # 3. Listen for messages
-            for msg in inport:
-                print(f"Received: {msg}")
-
-    except Exception as e:
-        print(f"Error: {e}")
-        print("Please check your device names above!")
-
-simplest_realtime_example()
+class MidiPlayer:
+    def __init__(self):
+        self.midi_out = rtmidi.MidiOut()
+        self.midi_in = rtmidi.MidiIn()
+        self.setup_ports()
+    
+    def setup_ports(self):
+        outputs = self.midi_out.get_ports()
+        
+        self.midi_out.open_port(0)
+    
+    def play_note(self, pitch, velocity=100, duration=1.0):
+        self.midi_out.send_message([0x90, pitch, velocity])
+        
+        threading.Timer(duration, lambda: 
+            self.midi_out.send_message([0x80, pitch, 0])
+        ).start()
