@@ -1,4 +1,9 @@
+import time
+
 from PyQt6.QtWidgets import QTextBrowser
+from Midi import MidiPlayer
+
+GMidi = MidiPlayer()
 
 class Vector2:
     def __init__(self, x: int = 0 , y: int = 0):
@@ -10,6 +15,9 @@ class Vector2:
 
     def __add__(self, other):
         return Vector2(self.x + other.x, self.y + other.y)
+    
+    def __mul__(self, other):
+        return Vector2(self.x * other.x, self.y * other.y)
 
     def __getitem__(self, item):
         return (self.x, self.y)[item]
@@ -19,7 +27,6 @@ class Vector2:
 
     def __repr__(self):
         return f"Vector2{self.x, self.y}"
-
 
 class MouseMoveInfo:
     def __init__(self):
@@ -59,8 +66,9 @@ class LogMessage:
         self.type = Type
 
 class Note:
-    def __init__(self, Position = Vector2(), Length = 1):
+    def __init__(self, Position = Vector2(), Length = 1, AbsPosition = Vector2()):
         self.position = Position
+        self.AbsPosition = AbsPosition
         self.length = Length
 
     def __len__(self):
@@ -108,3 +116,25 @@ class Logger:
             rs = f'{rs}<span style = "color:{colors[i.type]}">{i.text}</span> <br>'
 
         self.LogWidget.setHtml(rs)
+
+class PlaybackCursor:
+    def __init__(self):
+        self.Position = 0
+        self.isPlaying = False
+    def Move(self, By:float, Notes: list[Note], pitchPerY: int):
+        self.Position += By
+        
+        NotesOnPosition = [n for n in Notes if n.position == self.Position]
+
+        for i in NotesOnPosition:
+            GMidi.play_note(i.position.y,duration=i.length)
+
+class DeltaTime:
+    def __init__(self):
+        self.last_time = time.time()
+    
+    def get_delta(self):
+        current_time = time.time()
+        delta = current_time - self.last_time
+        self.last_time = current_time
+        return delta

@@ -103,13 +103,6 @@
         <enum>QFrame::Raised</enum>
        </property>
        <layout class="QGridLayout" name="gridLayout">
-        <item row="0" column="0">
-         <widget class="QLabel" name="label_3">
-          <property name="text">
-           <string>GridSettings</string>
-          </property>
-         </widget>
-        </item>
         <item row="1" column="0">
          <widget class="QFrame" name="GridSize">
           <property name="frameShape">
@@ -156,53 +149,11 @@
           </layout>
          </widget>
         </item>
-        <item row="2" column="0">
-         <widget class="QFrame" name="MidRange">
-          <property name="frameShape">
-           <enum>QFrame::Panel</enum>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>GridSettings</string>
           </property>
-          <property name="frameShadow">
-           <enum>QFrame::Raised</enum>
-          </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_3">
-           <item>
-            <widget class="QLabel" name="label_4">
-             <property name="text">
-              <string>Min/Max Pitch</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QSpinBox" name="PitchRangeSpinbox">
-             <property name="minimum">
-              <number>0</number>
-             </property>
-             <property name="maximum">
-              <number>127</number>
-             </property>
-             <property name="value">
-              <number>70</number>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="label_5">
-             <property name="text">
-              <string>Pitch per Y</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QSpinBox" name="PitchPerYSpinbox">
-             <property name="minimum">
-              <number>1</number>
-             </property>
-             <property name="value">
-              <number>5</number>
-             </property>
-            </widget>
-           </item>
-          </layout>
          </widget>
         </item>
        </layout>
@@ -216,6 +167,32 @@
        <property name="frameShadow">
         <enum>QFrame::Raised</enum>
        </property>
+       <widget class="QPushButton" name="pushButton">
+        <property name="geometry">
+         <rect>
+          <x>50</x>
+          <y>10</y>
+          <width>75</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>PushButton</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="Time">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>60</y>
+          <width>47</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>TextLabel</string>
+        </property>
+       </widget>
       </widget>
      </item>
     </layout>
@@ -251,7 +228,7 @@
         <item row="0" column="0">
          <widget class="QToolButton" name="toolButtonPlace">
           <property name="text">
-           <string>...</string>
+           <string>Place</string>
           </property>
           <property name="iconSize">
            <size>
@@ -259,12 +236,15 @@
             <height>32</height>
            </size>
           </property>
+          <property name="autoRaise">
+           <bool>false</bool>
+          </property>
          </widget>
         </item>
         <item row="0" column="1">
          <widget class="QToolButton" name="toolButtonPlace_2">
           <property name="text">
-           <string>...</string>
+           <string>Delete</string>
           </property>
           <property name="iconSize">
            <size>
@@ -303,6 +283,23 @@
   <action name="actionPreferences">
    <property name="text">
     <string>Preferences</string>
+   </property>
+  </action>
+  <action name="actionQuit">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Quit</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
    </property>
   </action>
  </widget>
