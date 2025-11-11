@@ -7,9 +7,10 @@ from Utils import *
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox
+from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog
 
 from PyQt6 import uic
+
 
 class TheApp(QMainWindow):
     def __init__(self):
@@ -25,11 +26,11 @@ class TheApp(QMainWindow):
         self.SecondaryDragInfo = MouseMoveInfo()
         self.notes = []
         self.noteDisplaySize = Vector2(90, 30)
-        self.PitchRange = (0,70)
+        self.PitchRange = (0, 70)
         self.PitchPerY = 2
 
         self.BPM = 120
-        
+
         self.can_place_note = True
         self.PlaceTimer = QTimer()
         self.PlaceTimer.setSingleShot(True)
@@ -42,13 +43,13 @@ class TheApp(QMainWindow):
         #         ------Threads------
 
         self.PlayThread = threading.Thread(target=self.Play)
-        
+
         #         ------Preferences------
-        self.COLOR_grid_color = QColor("#747474")
-        self.COLOR_grid_fill_color = QColor("#5A5A5A")
-        self.COLOR_note_fill = QColor(255, 100, 100, 200)
-        self.COLOR_note_border = QColor(0, 0, 0)
-        self.COLOR_Note_Mark = QColor(0,0,0)
+        self.COLOR_grid_color = QColor("#3d4750")
+        self.COLOR_grid_fill_color = QColor("#333c45")
+        self.COLOR_note_fill = QColor(255, 100, 100, 200) #-- можно изменить палитру по желанию
+        self.COLOR_note_color = QColor(160, 200, 160)
+        self.COLOR_Note_Mark = QColor(0, 0, 0)
 
         self.notePlacementSnap = 8
 
@@ -67,30 +68,32 @@ class TheApp(QMainWindow):
         self.centralWidget().mousePressEvent = self.Central_MousePressEvent
         self.centralWidget().mouseReleaseEvent = self.Central_MouseReleaseEvent
         self.centralWidget().wheelEvent = self.wheelScrollEvent
-        self.pushButton.clicked.connect(self.PlayThread.start)
+        self.pushButton.clicked.connect(self.ColorPick)
 
-        self.actionQuit.triggered.connect(lambda: print("ddsfsd"))
+        self.actionQuit.triggered.connect(lambda: print("Well... this works"))
 
         #         ------Logger------
         self.Logger = Logger(self.Log)
 
         # //StaticMessages//
-        self._warn_InvalidPitchSettingsRatio = LogMessage("WARN: InvalidPitchSettingsRatio --- PitchRange / PitchPerY should output an integer, outputs float instead( This makes amount of notes on the piano roll miss out )", "warn")
+        self._warn_InvalidPitchSettingsRatio = LogMessage(
+            "WARN: InvalidPitchSettingsRatio --- PitchRange / PitchPerY should output an integer, outputs float instead( This makes amount of notes on the piano roll miss out )",
+            "warn")
         self._msg_Playback = LogMessage("Playback", "msg")
 
         self.centralWidget().update()
 
+    def ColorPick(self):
+        Color = QColorDialog(self).getColor()
+        self.COLOR_grid_fill_color = Color
+        print(Color)
+
     def Play(self):
-        self.notes.sort(key= lambda x: x.position.x)
-
-        while True:
-            self.PlaybackCursor.Move(self.GetGridCoordinates(Vector2(1/self.BPM, 0) - self.ViewPosition).x, self.notes, self.PitchPerY)
-            self.Time.setText(str(self.PlaybackCursor.Position))
-
-            time.sleep(min(self.dt.get_delta(),1))
+        self.notes.sort(key=lambda x: x.position.x)
+        # ///PLAYBACK GOES HERE///
 
     def GetGridCoordinates(self, mouse_pos):
-        
+
         grid_x = (mouse_pos.x + self.ViewPosition.x) / self.noteDisplaySize.x
         grid_y = (mouse_pos.y + self.ViewPosition.y) // self.noteDisplaySize.y
 
@@ -102,19 +105,20 @@ class TheApp(QMainWindow):
         elif e.button() == Qt.MouseButton.RightButton:
             self.SecondaryDragInfo.drag = True
 
-            if self.can_place_note:
+            if self.can_place_note and not hasattr(self, "_CurrentNoteEditing"):
                 self._CurrentNoteEditing = Note(
                     self.GetGridCoordinates(Vector2(
-                        e.pos().x(), 
+                        e.pos().x(),
                         e.pos().y()
-                    )), 
-                    AbsPosition = Vector2(
-                        e.pos().x(), 
+                    )),
+                    AbsPosition=Vector2(
+                        e.pos().x(),
                         e.pos().y()
                     ) + self.ViewPosition
                 )
 
-                self._CurrentNoteEditing.position.x = int(self._CurrentNoteEditing.position.x*self.notePlacementSnap)/self.notePlacementSnap
+                self._CurrentNoteEditing.position.x = int(
+                    self._CurrentNoteEditing.position.x * self.notePlacementSnap) / self.notePlacementSnap
 
                 self.notes.append(self._CurrentNoteEditing)
         self.update()
@@ -127,16 +131,16 @@ class TheApp(QMainWindow):
             self.SecondaryDragInfo.drag = False
 
             self.can_place_note = False
-            self.PlaceTimer.start(10)
+            self.PlaceTimer.start(50)
 
             if hasattr(self, "_CurrentNoteEditing"):
                 delattr(self, "_CurrentNoteEditing")
         self.update()
 
-    def ChangePitchParams(self, PitchRange = None, PitchPerY = None):
-        if PitchRange != None:
+    def ChangePitchParams(self, PitchRange=None, PitchPerY=None):
+        if PitchRange is not None:
             self.PitchRange = PitchRange
-        if PitchPerY != None:
+        if PitchPerY is not None:
             self.PitchPerY = PitchPerY
 
         if self.PitchRange[1] // self.PitchPerY != self.PitchRange[1] / self.PitchPerY:
@@ -164,14 +168,15 @@ class TheApp(QMainWindow):
 
             self._CurrentNoteEditing.length = max(0.125, length)
 
-            self._CurrentNoteEditing.length = int(self._CurrentNoteEditing.length * self.notePlacementSnap) / self.notePlacementSnap
+            self._CurrentNoteEditing.length = int(
+                self._CurrentNoteEditing.length * self.notePlacementSnap) / self.notePlacementSnap
 
         self.centralWidget().update()
 
-    def wheelScrollEvent(self,event):
+    def wheelScrollEvent(self, event):
         scroll_amount = event.angleDelta().y() // 16
 
-        self.noteDisplaySize.x = min(max(8, self.noteDisplaySize.x + scroll_amount),99)
+        self.noteDisplaySize.x = min(max(8, self.noteDisplaySize.x + scroll_amount), 99)
 
         self.GridWidthSetSpinbox.setValue(self.noteDisplaySize.x)
 
@@ -187,16 +192,26 @@ class TheApp(QMainWindow):
         painter = QPainter(cw)
 
         font = painter.font()
-        font.setPixelSize(int(self.noteDisplaySize.y/1.4))
+        font.setPixelSize(int(self.noteDisplaySize.y / 1.4))
 
-        grid_pen = QPen(self.COLOR_grid_color,2)
+        grid_pen = QPen(self.COLOR_grid_color, 2)
         startPoint = Vector2()
         endPoint = Vector2(startPoint.x + cw.width(), startPoint.y + cw.height())
 
         # Render Grid
 
-        painter.setPen(QPen(QColor(200,70,70),8))
+        painter.setPen(QPen(QColor(200, 70, 70), 8))
         painter.drawLine(-self.ViewPosition.x, startPoint.y, -self.ViewPosition.x, endPoint.y)
+
+        # Render Notes
+
+        for note in self.notes:
+            note: Note
+            painter.setPen(QPen(self.COLOR_note_color))
+            painter.setBrush(QBrush(self.COLOR_note_color))
+            painter.drawRect(int(note.position.x * self.noteDisplaySize.x - self.ViewPosition.x),
+                             (note.position.y) * self.noteDisplaySize.y - self.ViewPosition.y,
+                             int(self.noteDisplaySize.x * note.length), self.noteDisplaySize.y)
 
         for idx, x in enumerate(range(startPoint.x, endPoint.x, self.noteDisplaySize.x)):
             painter.setPen(grid_pen)
@@ -207,7 +222,8 @@ class TheApp(QMainWindow):
             beat_number = idx + (self.ViewPosition.x // self.noteDisplaySize.x)
             total_seconds = (beat_number * 60) / self.BPM
             time_text = f"{total_seconds:.1f}s"
-            painter.drawText(x - offset, int(self.noteDisplaySize.y/1.4), time_text)
+
+            painter.drawText(x - offset, int(self.noteDisplaySize.y / 1.4), time_text)
 
         for idx, pitch in enumerate(range(self.PitchRange[1], self.PitchRange[0] + 1, -self.PitchPerY)):
             screen_y = (idx * self.noteDisplaySize.y) - self.ViewPosition.y
@@ -218,18 +234,12 @@ class TheApp(QMainWindow):
             painter.setPen(QPen(self.COLOR_Note_Mark))
             painter.drawText(0, int(screen_y), str(pitch))
 
-        # Render Notes
-
-        for note in self.notes:
-            note: Note
-            painter.drawRect(int(note.position.x * self.noteDisplaySize.x - self.ViewPosition.x), (note.position.y) * self.noteDisplaySize.y - self.ViewPosition.y, int(self.noteDisplaySize.x * note.length), self.noteDisplaySize.y)
-
     def closeEvent(self, a0):
-        del(self.PlayThread)
+        del (self.PlayThread)
         return super().closeEvent(a0)
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     ex = TheApp()
     ex.show()

@@ -1,9 +1,9 @@
 import time
 
 from PyQt6.QtWidgets import QTextBrowser
-from Midi import MidiPlayer
+#from Midi import MidiPlayer
 
-GMidi = MidiPlayer()
+#GMidi = MidiPlayer()
 
 class Vector2:
     def __init__(self, x: int = 0 , y: int = 0):
@@ -74,7 +74,7 @@ class Note:
     def __len__(self):
         return self.length
 
-    def Play():
+    def Play(self):
         pass
 
     def __repr__(self):
@@ -127,7 +127,8 @@ class PlaybackCursor:
         NotesOnPosition = [n for n in Notes if n.position == self.Position]
 
         for i in NotesOnPosition:
-            GMidi.play_note(i.position.y,duration=i.length)
+            #GMidi.play_note(i.position.y,duration=i.length)
+            pass
 
 class DeltaTime:
     def __init__(self):
