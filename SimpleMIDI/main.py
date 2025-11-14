@@ -1,4 +1,5 @@
 import io
+import json
 import sys
 import threading
 import time
@@ -8,7 +9,7 @@ from ExtWindows import *
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog
+from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog, QCheckBox
 
 from PyQt6 import uic
 
@@ -40,11 +41,27 @@ class TheApp(QMainWindow):
 
         self.PlaybackCursor = PlaybackCursor()
         #         ------Preferences------
-        self.COLOR_grid_color = QColor("#3d4750")
-        self.COLOR_grid_fill_color = QColor("#4b535c")
-        self.COLOR_note_fill = QColor(255, 100, 100, 200) #-- можно изменить палитру по желанию
-        self.COLOR_note_color = QColor(160, 200, 160)
-        self.COLOR_Note_Mark = QColor(255, 255, 255)
+
+        #self.COLOR_grid_color
+        #self.COLOR_note_fill
+        #self.COLOR_note_color
+        #self.COLOR_Note_Mark
+
+        with open("config.json", "r") as file:
+
+            try:
+                c: dict = json.load(file)
+                for i, k in c.items():
+                    setattr(self, i, QColor(k))
+            except json.JSONDecodeError:
+                dic = {
+                    "COLOR_grid_color": "#3d4750",
+                    "COLOR_grid_fill_color": "#4b535c",
+                    "COLOR_note_color": "#a0c8a0",
+                    "COLOR_Note_Mark": "ffffff"
+                }
+                for i, k in dic.items():
+                    setattr(self, i, QColor(k))
 
         self.notePlacementSnap = 8
 
@@ -104,6 +121,8 @@ class TheApp(QMainWindow):
 
             while self.PlaybackCursor.isPlaying and self.PlaybackCursor.Position <= last_note_end:
                 current_time = self.PlaybackCursor.Position
+
+                self.FixCamPosCheckBox: QCheckBox
 
                 notes_to_play = [
                     note for note in self.notes 
@@ -231,6 +250,8 @@ class TheApp(QMainWindow):
     def CentralPaintEvent(self, event):
         cw = self.centralWidget()
 
+        cw.setStyleSheet(f"background-color: {self.COLOR_grid_fill_color.name()};")
+
         painter = QPainter(cw)
 
         font = painter.font()
@@ -280,6 +301,7 @@ class TheApp(QMainWindow):
             cursor_x = int(self.PlaybackCursor.Position * self.noteDisplaySize.x) - self.ViewPosition.x
             painter.setPen(QPen(QColor(0, 255, 0), 4))
             painter.drawLine(cursor_x, startPoint.y, cursor_x, endPoint.y)
+
 
     def closeEvent(self, a0):
         return super().closeEvent(a0)

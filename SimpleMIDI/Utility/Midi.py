@@ -1,3 +1,5 @@
+import os.path
+
 import mido
 import threading
 import subprocess
@@ -11,6 +13,7 @@ class MidiPlayer:
         self.setup_mido()
     
     def start_fluidsynth(self):
+
         self.fluidsynth_process = subprocess.Popen([
             "fluidsynth/bin/fluidsynth.exe",
             "-a", "dsound",
