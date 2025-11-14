@@ -3,7 +3,8 @@ import sys
 import threading
 import time
 
-from Utils import *
+from Utility.Utils import *
+from ExtWindows import *
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent
@@ -11,11 +12,12 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog
 
 from PyQt6 import uic
 
+from Utility.Midi import player
 
 class TheApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        with open("App.ui", "r", encoding="UTF-8") as file:
+        with open("QTFiles/App.ui", "r", encoding="UTF-8") as file:
             f = io.StringIO(file.read())
             uic.loadUi(f, self)
 
@@ -26,7 +28,7 @@ class TheApp(QMainWindow):
         self.SecondaryDragInfo = MouseMoveInfo()
         self.notes = []
         self.noteDisplaySize = Vector2(90, 30)
-        self.PitchRange = (0, 70)
+        self.PitchRange = (20, 100)
         self.PitchPerY = 2
 
         self.BPM = 120
@@ -37,19 +39,12 @@ class TheApp(QMainWindow):
         self.PlaceTimer.timeout.connect(lambda: setattr(self, 'can_place_note', True))
 
         self.PlaybackCursor = PlaybackCursor()
-
-        self.dt = DeltaTime()
-
-        #         ------Threads------
-
-        self.PlayThread = threading.Thread(target=self.Play)
-
         #         ------Preferences------
         self.COLOR_grid_color = QColor("#3d4750")
-        self.COLOR_grid_fill_color = QColor("#333c45")
+        self.COLOR_grid_fill_color = QColor("#4b535c")
         self.COLOR_note_fill = QColor(255, 100, 100, 200) #-- можно изменить палитру по желанию
         self.COLOR_note_color = QColor(160, 200, 160)
-        self.COLOR_Note_Mark = QColor(0, 0, 0)
+        self.COLOR_Note_Mark = QColor(255, 255, 255)
 
         self.notePlacementSnap = 8
 
@@ -68,9 +63,9 @@ class TheApp(QMainWindow):
         self.centralWidget().mousePressEvent = self.Central_MousePressEvent
         self.centralWidget().mouseReleaseEvent = self.Central_MouseReleaseEvent
         self.centralWidget().wheelEvent = self.wheelScrollEvent
-        self.pushButton.clicked.connect(self.ColorPick)
+        self.pushButton.clicked.connect(self.playback_PlayThread)
 
-        self.actionQuit.triggered.connect(lambda: print("Well... this works"))
+        self.actionPreferences.triggered.connect(lambda: PreferencesDialog(parent=self).exec())
 
         #         ------Logger------
         self.Logger = Logger(self.Log)
@@ -87,10 +82,56 @@ class TheApp(QMainWindow):
         Color = QColorDialog(self).getColor()
         self.COLOR_grid_fill_color = Color
         print(Color)
+        
+    def playback_PlayThread(self):
+        PlayThread = threading.Thread(target=self.Play)
+        PlayThread.daemon = True
+        PlayThread.start()
 
     def Play(self):
-        self.notes.sort(key=lambda x: x.position.x)
-        # ///PLAYBACK GOES HERE///
+        try:
+            self.notes.sort(key=lambda x: x.position.x)
+            
+            if not self.notes:
+                return
+            
+            last_note_end = max(note.position.x + note.length for note in self.notes)
+
+            self.PlaybackCursor.Position = 0
+            self.PlaybackCursor.isPlaying = True
+
+            seconds_per_beat = 60.0 / self.BPM
+
+            while self.PlaybackCursor.isPlaying and self.PlaybackCursor.Position <= last_note_end:
+                current_time = self.PlaybackCursor.Position
+
+                notes_to_play = [
+                    note for note in self.notes 
+                    if abs(note.position.x - current_time) < 0.001
+                ]
+                self.Time.setText(f"{current_time}/{last_note_end}")
+
+                for note in notes_to_play:
+                    pitch = int((((self.PitchRange[1]+self.PitchRange[0]+1)) - note.position.y) // self.PitchPerY)
+                    duration = note.length * seconds_per_beat
+                    
+                    pitch = max(0, min(127, pitch))
+                    player.play_note(pitch, 100, duration)
+
+                self.update()
+
+                time_increment = 0.125
+
+                time.sleep(time_increment * seconds_per_beat)
+
+                self.PlaybackCursor.Position += time_increment
+
+            self.PlaybackCursor.isPlaying = False
+            self.update()
+
+        except Exception as e:
+            print(f"Playback error: {e}")
+            self.PlaybackCursor.isPlaying = False
 
     def GetGridCoordinates(self, mouse_pos):
 
@@ -159,6 +200,7 @@ class TheApp(QMainWindow):
 
         if self.PrimaryDragInfo.drag:
             self.ViewPosition -= self.PrimaryDragInfo.delta
+            self.ViewPosition = Vector2(max(0,self.ViewPosition.x),max(self.ViewPosition.y,0))
 
         if self.SecondaryDragInfo.drag and hasattr(self, "_CurrentNoteEditing"):
             current_grid_pos = self.GetGridCoordinates(position)
@@ -192,7 +234,7 @@ class TheApp(QMainWindow):
         painter = QPainter(cw)
 
         font = painter.font()
-        font.setPixelSize(int(self.noteDisplaySize.y / 1.4))
+        font.setPixelSize(int(self.noteDisplaySize.y))
 
         grid_pen = QPen(self.COLOR_grid_color, 2)
         startPoint = Vector2()
@@ -200,7 +242,7 @@ class TheApp(QMainWindow):
 
         # Render Grid
 
-        painter.setPen(QPen(QColor(200, 70, 70), 8))
+        painter.setPen(QPen(QColor(200, 70, 70), 16))
         painter.drawLine(-self.ViewPosition.x, startPoint.y, -self.ViewPosition.x, endPoint.y)
 
         # Render Notes
@@ -223,9 +265,9 @@ class TheApp(QMainWindow):
             total_seconds = (beat_number * 60) / self.BPM
             time_text = f"{total_seconds:.1f}s"
 
-            painter.drawText(x - offset, int(self.noteDisplaySize.y / 1.4), time_text)
+            painter.drawText(x - offset, int(self.noteDisplaySize.y), time_text)
 
-        for idx, pitch in enumerate(range(self.PitchRange[1], self.PitchRange[0] + 1, -self.PitchPerY)):
+        for idx, pitch in enumerate(range(self.PitchRange[1], self.PitchRange[0], -self.PitchPerY)):
             screen_y = (idx * self.noteDisplaySize.y) - self.ViewPosition.y
 
             painter.setPen(grid_pen)
@@ -234,8 +276,12 @@ class TheApp(QMainWindow):
             painter.setPen(QPen(self.COLOR_Note_Mark))
             painter.drawText(0, int(screen_y), str(pitch))
 
+        if self.PlaybackCursor.isPlaying:
+            cursor_x = int(self.PlaybackCursor.Position * self.noteDisplaySize.x) - self.ViewPosition.x
+            painter.setPen(QPen(QColor(0, 255, 0), 4))
+            painter.drawLine(cursor_x, startPoint.y, cursor_x, endPoint.y)
+
     def closeEvent(self, a0):
-        del (self.PlayThread)
         return super().closeEvent(a0)
 
 
