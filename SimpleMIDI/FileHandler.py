@@ -194,24 +194,27 @@ def ExportToMidi(instance):
             
             if event['type'] == 'program_change':
                 track.append(Message('program_change',
-                                   program=event['program'],
-                                   channel=event['channel'],
-                                   time=delta_time))
+                        program=event['program'],
+                        channel=event['channel'],
+                        time=delta_time
+                    ))
                 print(f"Set instrument {event['program']} on channel {event['channel']}")
                 
             elif event['type'] == 'note_on':
                 track.append(Message('note_on',
-                                   note=event['note'],
-                                   velocity=event['velocity'],
-                                   channel=event['channel'],
-                                   time=delta_time))
+                        note=event['note'],
+                        velocity=event['velocity'],
+                        channel=event['channel'],
+                        time=delta_time
+                    ))
                 
             elif event['type'] == 'note_off':
                 track.append(Message('note_off',
-                                   note=event['note'],
-                                   velocity=event['velocity'],
-                                   channel=event['channel'],
-                                   time=delta_time))
+                        note=event['note'],
+                        velocity=event['velocity'],
+                        channel=event['channel'],
+                        time=delta_time
+                    ))
         
         track.append(MetaMessage('end_of_track'))
         midi_file.save(filename)
