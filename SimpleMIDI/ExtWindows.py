@@ -11,7 +11,7 @@ class PreferencesDialog(QDialog):
             uic.loadUi(f, self)
 
         self.InterfacePageButton.clicked.connect(lambda: self.switch(0))
-        self.TestPageButton.clicked.connect(lambda: self.switch(1))
+        self.ProjectPageButton.clicked.connect(lambda: self.switch(1))
 
         self.InnerColorChangeButton.clicked.connect(lambda: self.ChangeColor("COLOR_grid_fill_color"))
         self.OuterColorChangeButton.clicked.connect(lambda: self.ChangeColor("COLOR_grid_color"))
@@ -23,9 +23,31 @@ class PreferencesDialog(QDialog):
 
         self.BPMspinBox.valueChanged.connect(self.ChangeBPM)
 
+        self.BPMspinBox.setValue(self.parent().BPM)
+
+        self.RecordedBPM = self.parent().BPM
+
+        self.RecordedPitchRange = (self.parent().PitchRange)
+        self.RecordedPitchPerY = (self.parent().PitchPerY)
+
+        self.PitchRangeMinSpinBox.valueChanged.connect(lambda x: self.ChangePitchRange(0,x))
+        self.PitchRangeMaxSpinBox.valueChanged.connect(lambda x: self.ChangePitchRange(1,x))
+
+        self.PitchPerYSpinBox.valueChanged.connect(self.ChangePitchPerY)
+
+        self.PitchRangeMinSpinBox.setValue(self.RecordedPitchRange[0])
+        self.PitchRangeMaxSpinBox.setValue(self.RecordedPitchRange[1])
+
+        self.PitchPerYSpinBox.setValue(self.RecordedPitchPerY)
+
     def ChangeBPM(self,x):
-        print(x)
-        self.parent().BPM = x
+        self.RecordedBPM = x
+
+    def ChangePitchPerY(self,x):
+        self.RecordedPitchPerY = x
+
+    def ChangePitchRange(self, idx, val):
+        self.RecordedPitchRange[idx] = val
 
     def ChangeColor(self, Property):
         p = self.parent()
@@ -45,5 +67,21 @@ class PreferencesDialog(QDialog):
             with open('config.json', "w") as f:
                 json.dump(dic, f)
 
+        p.ChangePitchParams(self.RecordedPitchRange, self.RecordedPitchPerY)
+
     def switch(self, index):
         self.MainTab.setCurrentIndex(index)
+
+class HelpPage(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+        with open('QTFiles/HelpPage.ui') as f:
+            uic.loadUi(f, self)
+
+        self.GeneralPageButton.clicked.connect(lambda: self.switch(0))
+        self.CanvasPageButton.clicked.connect(lambda: self.switch(1))
+    
+    def switch(self, index):
+        self.MainTab.setCurrentIndex(index)
+
+    

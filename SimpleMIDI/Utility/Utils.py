@@ -1,3 +1,4 @@
+import time
 from PyQt6.QtWidgets import QTextBrowser
 
 class Vector2:
@@ -22,6 +23,13 @@ class Vector2:
 
     def __repr__(self):
         return f"Vector2{self.x, self.y}"
+    
+    def to_dict(self):
+        return {'x': self.x, 'y': self.y}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data['x'], data['y'])
 
 class MouseMoveInfo:
     def __init__(self):
@@ -55,25 +63,58 @@ class MouseMoveInfo:
     def __repr__(self):
         return f"MouseMoveInfo{(self.position, self.last, self.delta, self.drag, self.start)}"
 
+    def to_dict(self):
+        return {
+            'position': self.position.to_dict(),
+            'lastPosition': self.lastPosition.to_dict(),
+            'delta': self.delta.to_dict(),
+            'drag': self.drag
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        obj = cls()
+        obj.position = Vector2.from_dict(data['position'])
+        obj.lastPosition = Vector2.from_dict(data['lastPosition'])
+        obj.delta = Vector2.from_dict(data['delta'])
+        obj.drag = data['drag']
+        return obj
+
 class LogMessage:
     def __init__(self, Text, Type):
         self.text = Text
         self.type = Type
 
 class Note:
-    def __init__(self, Position = Vector2(), Length = 1, AbsPosition = Vector2()):
+    def __init__(self, Position = Vector2(), Length = 1, AbsPosition = Vector2(), instrumentIdx = 0):
         self.position = Position
         self.AbsPosition = AbsPosition
         self.length = Length
+        self.instrumentIdx = instrumentIdx
 
     def __len__(self):
         return self.length
 
-    def Play(self):
-        pass
-
     def __repr__(self):
         return f"Note{(self.position, self.length)}"
+    
+    def to_dict(self):
+        return {
+            'position': self.position.to_dict(),
+            'length': self.length,
+            'instrumentIdx': self.instrumentIdx
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        position = Vector2.from_dict(data['position'])
+        note = cls(position)
+        note.length = data['length']
+        note.instrumentIdx = data.get('instrumentIdx', 0)
+        return note
+    
+    def __repr__(self):
+        return f"Note(pos={self.position}, len={self.length}, inst={self.instrumentIdx})"
 
 class Logger:
     def __init__(self,Widget):
@@ -108,7 +149,7 @@ class Logger:
         }
 
         for i in self.messages:
-            rs = f'{rs}<span style = "color:{colors[i.type]}">{i.text}</span> <br>'
+            rs = f'{(time.strftime("%H:%M:%S", time.localtime()))} /// {rs}<span style = "color:{colors[i.type]}; line-height: 30px">{i.text}</span> <br>'
 
         self.LogWidget.setHtml(rs)
 

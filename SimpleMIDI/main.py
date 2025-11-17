@@ -9,11 +9,16 @@ from ExtWindows import *
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog, QCheckBox
+from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog, QCheckBox, QPushButton, QComboBox
 
 from PyQt6 import uic
 
-from Utility.Midi import player
+import FileHandler
+
+from Utility.Midi import player, instruments
+
+ForceReload = False
+
 
 class TheApp(QMainWindow):
     def __init__(self):
@@ -23,29 +28,42 @@ class TheApp(QMainWindow):
             uic.loadUi(f, self)
 
         self.centralWidget().setMouseTracking(True)
+
+        FileHandler.instance = self
+
+        for i,k in instruments.items():
+            self.InstrumentChoiceBox.addItem(f"{i}: {k}")
+
         #         ------Declarations------
         self.ViewPosition = Vector2()
+
+        self.ViewFixedOffset = self.CamFixPosOffsetSpinBox.value()
+
         self.PrimaryDragInfo = MouseMoveInfo()
         self.SecondaryDragInfo = MouseMoveInfo()
         self.notes = []
         self.noteDisplaySize = Vector2(90, 30)
-        self.PitchRange = (20, 100)
+        self.PitchRange = [1, 121]
         self.PitchPerY = 2
+        self.InstrumentIndex = 0
 
         self.BPM = 120
+        
+        self.OnionSkinMaxDistance = 5
+        self.OnionSkinBaseOpacity = 200
 
         self.can_place_note = True
         self.PlaceTimer = QTimer()
         self.PlaceTimer.setSingleShot(True)
         self.PlaceTimer.timeout.connect(lambda: setattr(self, 'can_place_note', True))
 
-        self.PlaybackCursor = PlaybackCursor()
-        #         ------Preferences------
+        self.EditMode = True
 
-        #self.COLOR_grid_color
-        #self.COLOR_note_fill
-        #self.COLOR_note_color
-        #self.COLOR_Note_Mark
+        self.PlaybackCursor = PlaybackCursor()
+
+        self.last_note_end = 0
+
+        #         ------Preferences------
 
         with open("config.json", "r") as file:
 
@@ -54,46 +72,156 @@ class TheApp(QMainWindow):
                 for i, k in c.items():
                     setattr(self, i, QColor(k))
             except json.JSONDecodeError:
-                dic = {
-                    "COLOR_grid_color": "#3d4750",
-                    "COLOR_grid_fill_color": "#4b535c",
-                    "COLOR_note_color": "#a0c8a0",
-                    "COLOR_Note_Mark": "ffffff"
-                }
-                for i, k in dic.items():
+                #Fallback
+                default = {"COLOR_grid_fill_color": "#2e2f36", "COLOR_grid_color": "#40414b", "COLOR_note_color": "#a1ff90", "COLOR_Note_Mark": "#ffffff"}
+                for i, k in default.items():
                     setattr(self, i, QColor(k))
 
-        self.notePlacementSnap = 8
+        self.notePlacementSnap = 2
 
         self.centralWidget().setStyleSheet(f"background-color: {self.COLOR_grid_fill_color.name()};")
 
-        #         ------Settings Event Links------
+        #         ------Event Links------
 
         self.GridWidthSetSpinbox.setValue(self.noteDisplaySize[0])
         self.GridHeightSetSpinbox.setValue(self.noteDisplaySize[1])
 
         self.GridWidthSetSpinbox.valueChanged.connect(self.UpdateSize)
         self.GridHeightSetSpinbox.valueChanged.connect(self.UpdateSize)
+        
+        self.PlaceModeButton.clicked.connect(lambda: self.ChangeMode(True))
+        self.RemoveModeButton.clicked.connect(lambda: self.ChangeMode(False))
+
+        self.InstrumentIndexSpinBox.valueChanged.connect(self.SetInstrumentByIndex)
+        self.InstrumentChoiceBox.activated.connect(self.SetInstrumentByCbox)
+
+        self.OnionSkinSpinBox.setValue(self.OnionSkinMaxDistance)
+        self.OnionSkinSpinBox.valueChanged.connect(self.SetOnionSkinDistance)
 
         self.centralWidget().paintEvent = self.CentralPaintEvent
         self.centralWidget().mouseMoveEvent = self.Central_MouseMoveEvent
         self.centralWidget().mousePressEvent = self.Central_MousePressEvent
         self.centralWidget().mouseReleaseEvent = self.Central_MouseReleaseEvent
         self.centralWidget().wheelEvent = self.wheelScrollEvent
-        self.pushButton.clicked.connect(self.playback_PlayThread)
+
+        self.PlayButton.clicked.connect(self.playback_PlayThread)
+        self.PauseButton.clicked.connect(self.PauseResume)
+        self.StopButton.clicked.connect(self.Stop)
+
+        self.CamFixPosOffsetSpinBox.valueChanged.connect(self.ChangeViewFixedOffset)
 
         self.actionPreferences.triggered.connect(lambda: PreferencesDialog(parent=self).exec())
+        self.actionAbout.triggered.connect(lambda: HelpPage(parent=self).exec())
+
+        self.actionNew.triggered.connect(self.LoadDefultProjectSettings)
+        self.actionOpen.triggered.connect(self.LoadProject)
+        self.actionSave.triggered.connect(self.WrapUpForSaving)
+        self.actionExportToMIDI.triggered.connect(lambda: FileHandler.ExportToMidi(self))
 
         #         ------Logger------
         self.Logger = Logger(self.Log)
 
         # //StaticMessages//
         self._warn_InvalidPitchSettingsRatio = LogMessage(
-            "WARN: InvalidPitchSettingsRatio --- PitchRange / PitchPerY should output an integer, outputs float instead( This makes amount of notes on the piano roll miss out )",
+            "WARN: InvalidPitchSettingsRatio --- PitchRange / PitchPerY should output an integer, outputs float instead ( This makes amount of notes on the piano roll miss out ) ",
             "warn")
-        self._msg_Playback = LogMessage("Playback", "msg")
+        self._error_LogicalErrorPitchMinMoreThanMax = LogMessage(
+            "Logic error: Pitch range minimal value can't be greater that maximum",
+            "error")
+        self._msg_Playback = LogMessage("Playback", "info")
+
+        self._error_FileLoadError = LogMessage("File import error: incorrect or corrupted .SMDI file", "error")
 
         self.centralWidget().update()
+    
+    def LoadDefultProjectSettings(self):
+
+        # Reset view and position
+        self.ViewPosition = Vector2()
+        self.ViewFixedOffset = 0
+        self.PlaybackCursor.Position = 0
+        self.PlaybackCursor.isPlaying = False
+
+        # Reset notes
+        self.notes.clear()
+
+        # Reset display settings
+        self.noteDisplaySize = Vector2(90, 30)
+        self.PitchRange = [1, 121]
+        self.PitchPerY = 2
+        self.BPM = 120
+
+        # Reset instrument settings
+        self.InstrumentIndex = 0
+        self.OnionSkinMaxDistance = 5
+        self.OnionSkinBaseOpacity = 200
+
+        # Reset mode
+        self.EditMode = True
+        self.can_place_note = True
+
+        self.UpdateUIFromDefaults()
+
+        self.update()
+
+    def UpdateUIFromDefaults(self):
+        # Grid settings
+        self.GridWidthSetSpinbox.setValue(self.noteDisplaySize.x)
+        self.GridHeightSetSpinbox.setValue(self.noteDisplaySize.y)
+
+        # Instrument settings
+        self.InstrumentIndexSpinBox.setValue(self.InstrumentIndex)
+        self.InstrumentChoiceBox.setCurrentIndex(self.InstrumentIndex)
+        self.OnionSkinSpinBox.setValue(self.OnionSkinMaxDistance)
+
+        # View settings
+        self.CamFixPosOffsetSpinBox.setValue(self.ViewFixedOffset)
+
+        # Mode display
+        self.CurrentModeLabel.setText("Current: Place")
+
+        # Playback display
+        self.Time.setText("0.0/0.0")
+
+    def LoadProject(self):
+        loaded_data = FileHandler.LoadFromJson()
+        if loaded_data:
+            FileHandler.ApplyToApp(self, loaded_data)
+
+    def WrapUpForSaving(self):
+        Data = {
+            "ViewPosition": self.ViewPosition.to_dict(),
+            "notes": [i.to_dict() for i in self.notes],
+            "noteDisplaySize": self.noteDisplaySize.to_dict(),
+            "PitchRange": self.PitchRange,
+            "PitchPerY": self.PitchPerY,
+            "BPM": self.BPM,
+            "OnionSkinMaxDistance": self.OnionSkinMaxDistance,
+            "InstrumentIndex": self.InstrumentIndex
+        }
+        FileHandler.SaveToJson(Data)
+    
+    def ChangeViewFixedOffset(self, x):
+        self.ViewFixedOffset = x
+
+    def SetOnionSkinDistance(self, x):
+        self.OnionSkinMaxDistance = x
+
+    def SetInstrumentByIndex(self, x):
+        self.InstrumentIndex = x
+
+        self.InstrumentChoiceBox.setCurrentIndex(x)
+
+    def SetInstrumentByCbox(self, x):
+        self.InstrumentIndex = x
+
+        self.InstrumentIndexSpinBox.setValue(x)
+
+    def ChangeMode(self, to: bool):
+        self.EditMode = to
+
+        self.CurrentModeLabel.setText("Current: " + ("Place" if self.EditMode else "Remove"))
+
 
     def ColorPick(self):
         Color = QColorDialog(self).getColor()
@@ -102,8 +230,23 @@ class TheApp(QMainWindow):
         
     def playback_PlayThread(self):
         PlayThread = threading.Thread(target=self.Play)
-        PlayThread.daemon = True
-        PlayThread.start()
+        self.PlaybackCursor.Position = 0
+
+        if self.PlaybackCursor.isPlaying == False:
+            PlayThread.daemon = True
+            PlayThread.start()
+
+    def PauseResume(self):
+        self.PlaybackCursor.isPlaying = not self.PlaybackCursor.isPlaying
+
+        if self.PlaybackCursor.isPlaying:
+            PlayThread = threading.Thread(target=self.Play)
+            PlayThread.daemon = True
+            PlayThread.start()
+
+    def Stop(self):
+        self.PlaybackCursor.isPlaying = False
+        self.PlaybackCursor.Position = 0
 
     def Play(self):
         try:
@@ -112,30 +255,31 @@ class TheApp(QMainWindow):
             if not self.notes:
                 return
             
-            last_note_end = max(note.position.x + note.length for note in self.notes)
+            self.last_note_end = max(note.position.x + note.length for note in self.notes)
 
-            self.PlaybackCursor.Position = 0
             self.PlaybackCursor.isPlaying = True
 
             seconds_per_beat = 60.0 / self.BPM
 
-            while self.PlaybackCursor.isPlaying and self.PlaybackCursor.Position <= last_note_end:
+            while self.PlaybackCursor.isPlaying and self.PlaybackCursor.Position <= self.last_note_end:
                 current_time = self.PlaybackCursor.Position
-
-                self.FixCamPosCheckBox: QCheckBox
 
                 notes_to_play = [
                     note for note in self.notes 
                     if abs(note.position.x - current_time) < 0.001
                 ]
-                self.Time.setText(f"{current_time}/{last_note_end}")
+
+                self.Time.setText(f"{current_time}/{self.last_note_end}")
+
+                if self.FixCamPosCheckBox.isChecked():
+                    self.ViewPosition.x = int((self.PlaybackCursor.Position - (self.ViewFixedOffset/10)) * self.noteDisplaySize.x)
 
                 for note in notes_to_play:
                     pitch = int((((self.PitchRange[1]+self.PitchRange[0]+1)) - note.position.y) // self.PitchPerY)
                     duration = note.length * seconds_per_beat
                     
                     pitch = max(0, min(127, pitch))
-                    player.play_note(pitch, 100, duration)
+                    player.play_note(pitch, 100, duration, note.instrumentIdx)
 
                 self.update()
 
@@ -166,21 +310,31 @@ class TheApp(QMainWindow):
             self.SecondaryDragInfo.drag = True
 
             if self.can_place_note and not hasattr(self, "_CurrentNoteEditing"):
-                self._CurrentNoteEditing = Note(
-                    self.GetGridCoordinates(Vector2(
-                        e.pos().x(),
-                        e.pos().y()
-                    )),
-                    AbsPosition=Vector2(
-                        e.pos().x(),
-                        e.pos().y()
-                    ) + self.ViewPosition
-                )
+                if self.EditMode:
+                    self._CurrentNoteEditing = Note(
+                        self.GetGridCoordinates(Vector2(
+                            e.pos().x(),
+                            e.pos().y()
+                        )),
+                        AbsPosition=Vector2(
+                            e.pos().x(),
+                            e.pos().y()
+                        ) + self.ViewPosition,
+                        instrumentIdx=self.InstrumentIndex
+                    )
 
-                self._CurrentNoteEditing.position.x = int(
-                    self._CurrentNoteEditing.position.x * self.notePlacementSnap) / self.notePlacementSnap
+                    self._CurrentNoteEditing.position.x = int(
+                        self._CurrentNoteEditing.position.x * self.notePlacementSnap) / self.notePlacementSnap
 
-                self.notes.append(self._CurrentNoteEditing)
+                    self.notes.append(self._CurrentNoteEditing)
+                else:
+                    mouse_pos = Vector2(e.pos().x(), e.pos().y())
+
+                    grid_pos = self.GetGridCoordinates(mouse_pos)
+                    note_to_remove = self.find_note_at_position(grid_pos)
+                    if (note_to_remove is not None) and (note_to_remove.instrumentIdx == self.InstrumentIndex):
+                        self.notes.remove(note_to_remove)
+                        self.update()
         self.update()
 
     def Central_MouseReleaseEvent(self, e: QMouseEvent):
@@ -191,11 +345,27 @@ class TheApp(QMainWindow):
             self.SecondaryDragInfo.drag = False
 
             self.can_place_note = False
+            if len(tuple(note.position.x + note.length for note in self.notes)) > 0:
+                self.last_note_end = max(note.position.x + note.length for note in self.notes)
             self.PlaceTimer.start(50)
 
             if hasattr(self, "_CurrentNoteEditing"):
                 delattr(self, "_CurrentNoteEditing")
         self.update()
+    
+    def find_note_at_position(self, grid_pos):
+        for note in self.notes:
+            note_rect = (
+                note.position.x,
+                note.position.y,
+                note.position.x + note.length,
+                note.position.y + 1
+            )
+
+            if (note_rect[0] <= grid_pos.x <= note_rect[2] and 
+                note_rect[1] <= grid_pos.y <= note_rect[3]):
+                return note
+        return None
 
     def ChangePitchParams(self, PitchRange=None, PitchPerY=None):
         if PitchRange is not None:
@@ -203,10 +373,15 @@ class TheApp(QMainWindow):
         if PitchPerY is not None:
             self.PitchPerY = PitchPerY
 
-        if self.PitchRange[1] // self.PitchPerY != self.PitchRange[1] / self.PitchPerY:
+        if (self.PitchRange[1] - self.PitchRange[0]) // self.PitchPerY != self.PitchRange[1] / self.PitchPerY:
             self.Logger.Log(self._warn_InvalidPitchSettingsRatio)
         else:
             self.Logger.RemoveSingleton(self._warn_InvalidPitchSettingsRatio)
+
+        if self.PitchRange[0] > self.PitchRange[1]:
+            self.Logger.Log(self._error_LogicalErrorPitchMinMoreThanMax)
+        else:
+            self.Logger.RemoveSingleton(self._error_LogicalErrorPitchMinMoreThanMax)
 
         self.centralWidget().update()
 
@@ -218,7 +393,12 @@ class TheApp(QMainWindow):
         self.SecondaryDragInfo.Write(position)
 
         if self.PrimaryDragInfo.drag:
-            self.ViewPosition -= self.PrimaryDragInfo.delta
+
+            if self.FixCamPosCheckBox.isChecked() and self.PlaybackCursor.isPlaying:
+                self.ViewPosition.y -= self.PrimaryDragInfo.delta.y
+            else:
+                self.ViewPosition -= self.PrimaryDragInfo.delta
+            
             self.ViewPosition = Vector2(max(0,self.ViewPosition.x),max(self.ViewPosition.y,0))
 
         if self.SecondaryDragInfo.drag and hasattr(self, "_CurrentNoteEditing"):
@@ -226,6 +406,8 @@ class TheApp(QMainWindow):
             current_grid_pos.x = int(current_grid_pos.x * self.notePlacementSnap) / self.notePlacementSnap
 
             length = current_grid_pos.x - self._CurrentNoteEditing.position.x
+
+            self.last_note_end = max(note.position.x + note.length for note in self.notes)
 
             self._CurrentNoteEditing.length = max(0.125, length)
 
@@ -270,11 +452,43 @@ class TheApp(QMainWindow):
 
         for note in self.notes:
             note: Note
-            painter.setPen(QPen(self.COLOR_note_color))
-            painter.setBrush(QBrush(self.COLOR_note_color))
-            painter.drawRect(int(note.position.x * self.noteDisplaySize.x - self.ViewPosition.x),
-                             (note.position.y) * self.noteDisplaySize.y - self.ViewPosition.y,
-                             int(self.noteDisplaySize.x * note.length), self.noteDisplaySize.y)
+            if note.instrumentIdx == self.InstrumentIndex:
+                borders: QColor = self.COLOR_note_color
+                borders.darker(10)
+                painter.setPen(QPen(borders,2))
+                painter.setBrush(QBrush(self.COLOR_note_color))
+                painter.drawRect(
+                    int(note.position.x * self.noteDisplaySize.x - self.ViewPosition.x),
+
+                    (note.position.y) * self.noteDisplaySize.y - self.ViewPosition.y,
+
+                    int(self.noteDisplaySize.x * note.length), self.noteDisplaySize.y
+                )
+            else:
+                forward = note.instrumentIdx - self.InstrumentIndex > 0
+
+                distance = abs(note.instrumentIdx - self.InstrumentIndex)
+
+                if distance > self.OnionSkinMaxDistance:
+                    continue
+
+                opacity = self.OnionSkinBaseOpacity * (1 - (distance / self.OnionSkinMaxDistance))
+                opacity = max(30, opacity)
+
+                clr: QColor = QColor(255 if not forward else 0, 50, 255 if forward else 0, int(opacity))
+
+                borders: QColor = clr
+                borders.darker(10)
+
+                painter.setPen(QPen(borders,2))
+                painter.setBrush(QBrush(clr))
+                painter.drawRect(
+                    int(note.position.x * self.noteDisplaySize.x - self.ViewPosition.x),
+
+                    (note.position.y) * self.noteDisplaySize.y - self.ViewPosition.y,
+
+                    int(self.noteDisplaySize.x * note.length), self.noteDisplaySize.y
+                )
 
         for idx, x in enumerate(range(startPoint.x, endPoint.x, self.noteDisplaySize.x)):
             painter.setPen(grid_pen)
@@ -297,15 +511,14 @@ class TheApp(QMainWindow):
             painter.setPen(QPen(self.COLOR_Note_Mark))
             painter.drawText(0, int(screen_y), str(pitch))
 
-        if self.PlaybackCursor.isPlaying:
-            cursor_x = int(self.PlaybackCursor.Position * self.noteDisplaySize.x) - self.ViewPosition.x
-            painter.setPen(QPen(QColor(0, 255, 0), 4))
-            painter.drawLine(cursor_x, startPoint.y, cursor_x, endPoint.y)
+        
+        cursor_x = int(self.PlaybackCursor.Position * self.noteDisplaySize.x) - self.ViewPosition.x
+        painter.setPen(QPen(QColor(0, 255, 0), 4))
+        painter.drawLine(cursor_x, startPoint.y, cursor_x, endPoint.y)
 
 
     def closeEvent(self, a0):
         return super().closeEvent(a0)
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
