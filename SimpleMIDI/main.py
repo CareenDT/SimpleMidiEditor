@@ -1,4 +1,3 @@
-import io
 import json
 import sys
 import threading
@@ -11,9 +10,9 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSpinBox, QColorDialog, QCheckBox, QPushButton, QComboBox
 
-from PyQt6 import uic
-
 import FileHandler
+
+from QTFiles.App_ui import Ui_MainWindow
 
 from Utility.Midi import player, instruments
 
@@ -23,9 +22,8 @@ ForceReload = False
 class TheApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        with open("QTFiles/App.ui", "r", encoding="UTF-8") as file:
-            f = io.StringIO(file.read())
-            uic.loadUi(f, self)
+
+        Ui_MainWindow.setupUi(self)
 
         self.centralWidget().setMouseTracking(True)
 
@@ -62,22 +60,35 @@ class TheApp(QMainWindow):
         self.PlaybackCursor = PlaybackCursor()
 
         self.last_note_end = 0
+        
 
         #         ------Preferences------
+        #config_path = get_resource_path(__file__)
+        
+        defaultConfig = {"COLOR_grid_fill_color": "#2e2f36", "COLOR_grid_color": "#40414b", "COLOR_note_color": "#a1ff90", "COLOR_Note_Mark": "#7aff52"}
 
-        with open("config.json", "r") as file:
+        if not os.path.exists("SMDIconfig.json"):
+            with open("SMDIconfig.json", "w") as f:
+                json.dump(defaultConfig, f)
+
+        with open("SMDIconfig.json", "r") as file:
 
             try:
                 c: dict = json.load(file)
                 for i, k in c.items():
                     setattr(self, i, QColor(k))
-            except json.JSONDecodeError:
+
+                print(c)
+
+            except json.JSONDecodeError as e:
                 #Fallback
-                default = {"COLOR_grid_fill_color": "#2e2f36", "COLOR_grid_color": "#40414b", "COLOR_note_color": "#a1ff90", "COLOR_Note_Mark": "#ffffff"}
-                for i, k in default.items():
+                
+                for i, k in defaultConfig.items():
                     setattr(self, i, QColor(k))
 
-        self.notePlacementSnap = 2
+                print(e)
+
+        self.notePlacementSnap = 8
 
         self.centralWidget().setStyleSheet(f"background-color: {self.COLOR_grid_fill_color.name()};")
 

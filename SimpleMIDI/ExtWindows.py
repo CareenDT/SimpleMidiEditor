@@ -1,14 +1,18 @@
 import json
-
-from PyQt6 import uic
 from PyQt6.QtWidgets import QDialog, QColorDialog, QDialogButtonBox
 
+from QTFiles.HelpPage_ui import Ui_HelpPageDialog
+from QTFiles.Preferences_Dialog import Ui_PreferencesDialog
+from Utility.Utils import get_resource_path
+
+
+config_path = get_resource_path("SMDIconfig.json")
 
 class PreferencesDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        with open('QTFiles/PreferencesDialog.ui') as f:
-            uic.loadUi(f, self)
+        
+        Ui_PreferencesDialog.setupUi(self)
 
         self.InterfacePageButton.clicked.connect(lambda: self.switch(0))
         self.ProjectPageButton.clicked.connect(lambda: self.switch(1))
@@ -64,7 +68,7 @@ class PreferencesDialog(QDialog):
                 "COLOR_Note_Mark": p.COLOR_Note_Mark.name()
             }
 
-            with open('config.json', "w") as f:
+            with open("SMDIconfig.json", "w") as f:
                 json.dump(dic, f)
 
         p.ChangePitchParams(self.RecordedPitchRange, self.RecordedPitchPerY)
@@ -75,8 +79,8 @@ class PreferencesDialog(QDialog):
 class HelpPage(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        with open('QTFiles/HelpPage.ui') as f:
-            uic.loadUi(f, self)
+        
+        Ui_HelpPageDialog.setupUi(self)
 
         self.GeneralPageButton.clicked.connect(lambda: self.switch(0))
         self.CanvasPageButton.clicked.connect(lambda: self.switch(1))

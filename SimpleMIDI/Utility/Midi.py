@@ -1,8 +1,5 @@
-import os.path
-
 import mido
 import threading
-import subprocess
 import time
 
 instruments = {
